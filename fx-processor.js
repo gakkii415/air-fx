@@ -1,11 +1,16 @@
 /* AudioWorklet DSP: sample-and-hold bitcrush, rhythmic gate, captured-loop stutter. */
+const REPEAT_DIVISIONS = [1, 0.5, 0.25, 0.125, 0.0625];
+const GATE_DIVISIONS = [1, 0.5, 0.25, 0.125];
 class AirFXProcessor extends AudioWorkletProcessor {
   static get parameterDescriptors() {
     return [
       { name: 'crush', defaultValue: 0, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
       { name: 'gate', defaultValue: 0, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
       { name: 'repeat', defaultValue: 0, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
-      { name: 'intensity', defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
+      { name: 'intensity', defaultValue: 1, minValue: 1, maxValue: 1, automationRate: 'k-rate' },
+      { name: 'crushColor', defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
+      { name: 'gateColor', defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
+      { name: 'repeatColor', defaultValue: 0.5, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
       { name: 'bpm', defaultValue: 120, minValue: 60, maxValue: 220, automationRate: 'k-rate' },
     ];
   }
@@ -68,16 +73,18 @@ class AirFXProcessor extends AudioWorkletProcessor {
     const output = outputs[0];
     if (!output?.length) return true;
     const frameCount = output[0].length;
-    const strength = parameters.intensity[0];
+    const crushColor = parameters.crushColor[0];
+    const gateColor = parameters.gateColor[0];
+    const repeatColor = parameters.repeatColor[0];
     const bpm = parameters.bpm[0];
     const crushTarget = parameters.crush[0];
     const gateTarget = parameters.gate[0];
     const repeatOn = parameters.repeat[0] > 0.5;
-    const bits = 12 - Math.floor(strength * 9);
+    const bits = 9 - Math.floor(crushColor * 6);
     const quantization = Math.pow(2, bits - 1);
-    const holdSamples = Math.max(1, Math.round(1 + strength * strength * 26));
+    const holdSamples = Math.round(3 + crushColor * crushColor * 29);
     // At 120 BPM the middle setting captures a sixteenth note (125 ms).
-    const subdivision = strength < 0.33 ? 0.5 : strength < 0.76 ? 0.25 : 0.125;
+    const subdivision = REPEAT_DIVISIONS[Math.min(4, Math.floor(repeatColor * 5))];
     const targetLength = Math.min(this.historyLength, Math.max(64, Math.round((60 / bpm) * subdivision * sampleRate)));
     this.stableTargetCount = targetLength === this.lastTargetLength ? this.stableTargetCount + 1 : 0;
     const lengthDifference = Math.abs(targetLength - this.loopLength);
@@ -87,8 +94,8 @@ class AirFXProcessor extends AudioWorkletProcessor {
     if (!repeatOn) this.capturePending = false;
     this.repeatWasOn = repeatOn;
     this.lastTargetLength = targetLength;
-    const gatePeriod = sampleRate * (60 / bpm) * 0.5;
-    const gateDuty = 0.64 - strength * 0.3;
+    const gatePeriod = sampleRate * (60 / bpm) * GATE_DIVISIONS[Math.min(3, Math.floor(gateColor * 4))];
+    const gateDuty = 0.62 - gateColor * 0.35;
     const edge = Math.min(0.045, (sampleRate * 0.0035) / gatePeriod);
     const smooth = this.smoothing;
 
@@ -100,7 +107,7 @@ class AirFXProcessor extends AudioWorkletProcessor {
       const repeatTarget = repeatOn && this.loopLength && !this.capturePending ? parameters.repeat[0] : 0;
       this.repeatBlend += (repeatTarget - this.repeatBlend) * smooth;
 
-      const gatePhase = this.phase / gatePeriod;
+      const gatePhase = this.phase;
       let gate = 0.012;
       if (gatePhase < gateDuty) {
         const attack = Math.min(1, gatePhase / edge);
@@ -137,7 +144,7 @@ class AirFXProcessor extends AudioWorkletProcessor {
       this.writeIndex = (this.writeIndex + 1) % this.historyLength;
       this.historyCount = Math.min(this.historyLength, this.historyCount + 1);
       if (this.loopLength) this.loopPosition = (this.loopPosition + 1) % this.loopLength;
-      this.phase = (this.phase + 1) % gatePeriod;
+      this.phase = (this.phase + 1 / gatePeriod) % 1;
     }
     return true;
   }

@@ -2,22 +2,33 @@
 
 [ブラウザで使う](https://gakkii415.github.io/air-fx/)
 
-A browser audio deck with three licensed EDM/electronic tracks, six effects, touch/keyboard performance, and local audio loading. Static HTML/CSS/JavaScript; no build or dependencies. GitHub Pages serves the repository root.
+曲を長押しエフェクトで加工して遊ぶ、スマートフォン向けの静的Web Audioデッキ。iPhone 16の縦横画面に対応し、メイン画面はスクロールなしで操作できます。
 
-Run locally:
+- 強さは常に100%。パッドを押している間だけONになり、押したまま左右に動かすと、そのエフェクトの音色・速さ・間隔を変えられます。
+- 複数の指で別々のパッドを操作できます。演奏面のピンチによる拡大縮小を抑止します。
+- 曲選択は一覧、ミックスとテンポは調整ダイアログ。ローカルファイルは端末内で処理し、アップロードしません。
+- PCではA/S/D/J/K/Lを長押し。フォーカスしたパッドはSpace/EnterでON、左右キーでパラメータ調整。Spaceで再生・一時停止。
+
+## ローカル起動
 
 ```sh
 python -m http.server 4173
 ```
 
-Open http://localhost:4173. Use HTTPS for a remote host because AudioWorklet requires a secure context. Select a track to start, tap pads to toggle effects, or select hold mode. Keyboard: A/S/D/J/K/L; Space plays/pauses. Drag the XY pad to change timbre and intensity. Multiple effects can be combined; BPM sync applies to gate, repeat, and echo. Loop playback can be disabled.
+http://localhost:4173 を開きます。ビルドや依存ライブラリは不要です。外部ホストではHTTPSが必要です。
 
-Audio is decoded and processed in the browser. Local files are never uploaded. Recording/export is not included.
+## 音源とライセンス
 
-## Included music
+収録音源は128kbps MP3へ再エンコードしています。再生時のエフェクトで音が変わります。正確なメタデータと帰属表示は `tracks.json` およびアプリ内クレジットに保持します。
 
-- Unity — TheFatRat: https://www.newgrounds.com/audio/listen/621134 — CC BY 3.0, https://creativecommons.org/licenses/by/3.0/
-- Cipher — Kevin MacLeod (incompetech.com): https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100844 — CC BY 4.0, https://creativecommons.org/licenses/by/4.0/
-- EDM Detection Mode — Kevin MacLeod (incompetech.com): https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500026 — CC BY 4.0, https://creativecommons.org/licenses/by/4.0/
+- **Unity — TheFatRat**: [配布元](https://www.newgrounds.com/audio/listen/621134) · [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)
+- **Cipher — Kevin MacLeod**: [配布元](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100844) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+- **EDM Detection Mode — Kevin MacLeod**: [配布元](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500026) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+- **Club Diver — Kevin MacLeod**: [配布元](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1200020) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+- **Cloud Dancer — Kevin MacLeod**: [配布元](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN2300007) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+- **Exit the Premises — Kevin MacLeod**: [配布元](https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500029) · [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)
+- **Sphere — Creo**: [配布元](https://www.newgrounds.com/audio/listen/739991) · [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)
+- **Dimension — Creo**: [配布元](https://www.newgrounds.com/audio/listen/709578) · [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)
+- **Place On Fire — Creo**: [配布元](https://www.newgrounds.com/audio/listen/847116) · [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/)
 
-Tracks were re-encoded to 128 kbps MP3. Interactive effects alter playback. Detailed attribution is retained in `tracks.json` and shown through Credits & Licenses. Album designs are original geometric artwork, not official covers. This project is independent and not affiliated with SOUND VOLTEX.
+アルバムの図柄は独自の幾何学表現です。SOUND VOLTEXの公式サービスではありません。録音・書き出しは含みません。

@@ -12,6 +12,7 @@
  */
 const EFFECTS = ['crush', 'air', 'filter', 'gate', 'repeat', 'echo'];
 const NATIVE_EFFECTS = ['air', 'filter', 'echo'];
+const ECHO_DIVISIONS = [1, 0.75, 0.5, 0.25, 0.125];
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
 
 export class AudioEngine {
@@ -27,9 +28,9 @@ export class AudioEngine {
     this._playing = false;
     this._volume = 0.65;
     this._mix = 0.72;
-    this._intensity = 0.5;
+    this._intensity = 1;
     this._bpm = 120;
-    this._xy = { x: 0.5, y: 0.5 };
+    this._effectParameters = Object.fromEntries(EFFECTS.map((id) => [id, 0.5]));
     this._effects = new Set();
     this._ready = null;
     this._transportVersion = 0;
@@ -403,10 +404,22 @@ export class AudioEngine {
     this._mix = clamp(value, 0, 1);
     this._applySettings();
   }
-  setIntensity(value) {
-    this._intensity = clamp(value, 0, 1);
+  setIntensity() {
+    // Kept for older callers: effect strength is always 100%.
+    this._intensity = 1;
     this._applySettings();
   }
+  setEffectParameter(id, value) {
+    if (!EFFECTS.includes(id)) throw new RangeError(`Unknown audio effect: ${id}`);
+    this._effectParameters[id] = clamp(value, 0, 1);
+    this._applySettings();
+    return this._effectParameters[id];
+  }
+  getEffectParameter(id) {
+    if (!EFFECTS.includes(id)) throw new RangeError(`Unknown audio effect: ${id}`);
+    return this._effectParameters[id];
+  }
+  getEffectParameters() { return { ...this._effectParameters }; }
   setBpm(value) {
     this._bpm = clamp(value, 60, 220);
     this._applySettings();
@@ -419,9 +432,9 @@ export class AudioEngine {
     this._applySettings();
     return true;
   }
-  setXY(x, y) {
-    this._xy = { x: clamp(x, 0, 1), y: clamp(y, 0, 1) };
-    this._applySettings();
+  setXY(x) {
+    // Legacy horizontal control; vertical movement no longer changes strength.
+    this.setEffectParameter('filter', x);
   }
 
   _ramp(param, value, seconds = 0.025, immediate = false) {
@@ -449,7 +462,7 @@ export class AudioEngine {
 
   _applySettings(immediate = false) {
     if (!this._graphReady) return;
-    const s = this._intensity;
+    const color = this._effectParameters;
     const active = (id) => this._effects.has(id);
     const ramp = (param, value, time = 0.03) => this._ramp(param, value, time, immediate);
     const hasEffects = this._effects.size > 0;
@@ -459,29 +472,32 @@ export class AudioEngine {
     for (const id of ['crush', 'gate', 'repeat']) {
       ramp(this._processor.parameters?.get(id), active(id) ? 1 : 0, 0.012);
     }
-    ramp(this._processor.parameters?.get('intensity'), s);
+    ramp(this._processor.parameters?.get('intensity'), 1);
     ramp(this._processor.parameters?.get('bpm'), this._bpm, 0.025);
+    for (const id of ['crush', 'gate', 'repeat']) {
+      ramp(this._processor.parameters?.get(`${id}Color`), color[id], 0.035);
+    }
 
     const nyquist = this.context.sampleRate * 0.46;
-    const brightness = Math.pow(80, this._xy.x);
-    const filterCutoff = Math.min(nyquist, 150 * brightness * (1.4 - s * 0.6));
+    const filterCutoff = Math.min(nyquist * 0.55, 180 * Math.pow(55, color.filter));
     ramp(this._filter.frequency, active('filter') ? filterCutoff : nyquist);
-    ramp(this._filter.Q, active('filter') ? 1.5 + s * 5.5 : 0.0001);
-    ramp(this._filterDepth.gain, active('filter') ? 250 + this._xy.y * (450 + 750 * s) : 0);
-    ramp(this._filterLFO.frequency, (this._bpm / 60) * (0.125 + this._xy.y * 0.125));
+    ramp(this._filter.Q, active('filter') ? 5.5 : 0.0001);
+    ramp(this._filterDepth.gain, active('filter') ? 180 : 0);
+    ramp(this._filterLFO.frequency, this._bpm / 480);
 
-    ramp(this._airDelay.delayTime, 0.0045 + 0.004 * s, 0.06);
-    ramp(this._airDepth.gain, active('air') ? 0.0014 + s * 0.0033 : 0, 0.06);
-    ramp(this._airLFO.frequency, 0.12 + this._xy.y * 0.3 + s * 0.16);
-    ramp(this._airWet.gain, active('air') ? 0.38 + s * 0.4 : 0);
-    ramp(this._airFeedback.gain, active('air') ? 0.15 + s * 0.4 : 0);
-    ramp(this._airDirect.gain, active('air') ? 0.86 : 1);
+    ramp(this._airDelay.delayTime, 0.003 + color.air * 0.013, 0.06);
+    ramp(this._airDepth.gain, active('air') ? 0.0015 + color.air * 0.0045 : 0, 0.06);
+    ramp(this._airLFO.frequency, 0.08 + 1.9 * color.air * color.air);
+    ramp(this._airWet.gain, active('air') ? 0.72 : 0);
+    ramp(this._airFeedback.gain, active('air') ? 0.3 + color.air * 0.22 : 0);
+    ramp(this._airDirect.gain, active('air') ? 0.82 : 1);
 
-    ramp(this._echoDelay.delayTime, (60 / this._bpm) * 0.5, 0.09);
-    ramp(this._echoFeedback.gain, active('echo') ? 0.15 + s * 0.45 : 0);
-    ramp(this._echoWet.gain, active('echo') ? 0.28 + s * 0.4 : 0);
-    ramp(this._echoDirect.gain, active('echo') ? 0.9 : 1);
-    ramp(this._echoLowpass.frequency, 6200 - s * 3000);
+    const echoDivision = ECHO_DIVISIONS[Math.min(4, Math.floor(color.echo * 5))];
+    ramp(this._echoDelay.delayTime, (60 / this._bpm) * echoDivision, 0.09);
+    ramp(this._echoFeedback.gain, active('echo') ? 0.3 + color.echo * 0.34 : 0);
+    ramp(this._echoWet.gain, active('echo') ? 0.64 : 0);
+    ramp(this._echoDirect.gain, active('echo') ? 0.85 : 1);
+    ramp(this._echoLowpass.frequency, 6500 - color.echo * 4000);
   }
 
   getDiagnostics() {
@@ -495,6 +511,7 @@ export class AudioEngine {
       volume: this._volume,
       mix: this._mix,
       intensity: this._intensity,
+      effectParameters: this.getEffectParameters(),
       bpm: this._bpm,
       workletReady: this._workletReady,
       workletError: this._workletError,
