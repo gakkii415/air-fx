@@ -1,0 +1,41 @@
+[
+  {
+    "id": "unity",
+    "title": "Unity",
+    "artist": "TheFatRat",
+    "genre": "Glitch Hop / EDM",
+    "bpm": 105,
+    "license": "CC BY 3.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+    "sourceUrl": "https://www.newgrounds.com/audio/listen/621134",
+    "credit": "“Unity” by TheFatRat — https://www.newgrounds.com/audio/listen/621134 — licensed under CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/). Re-encoded to 128 kbps MP3 for this app; interactive audio effects may alter playback.",
+    "duration": 249.31,
+    "url": "./assets/track-1.mp3"
+  },
+  {
+    "id": "cipher",
+    "title": "Cipher",
+    "artist": "Kevin MacLeod",
+    "genre": "Electronica",
+    "bpm": 150,
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "sourceUrl": "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100844",
+    "credit": "“Cipher” by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1100844 — licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Re-encoded to 128 kbps MP3 for this app; interactive audio effects may alter playback.",
+    "duration": 231.29,
+    "url": "./assets/track-2.mp3"
+  },
+  {
+    "id": "edm-detection-mode",
+    "title": "EDM Detection Mode",
+    "artist": "Kevin MacLeod",
+    "genre": "EDM / Electronica",
+    "bpm": 128,
+    "license": "CC BY 4.0",
+    "licenseUrl": "https://creativecommons.org/licenses/by/4.0/",
+    "sourceUrl": "https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500026",
+    "credit": "“EDM Detection Mode” by Kevin MacLeod (incompetech.com) — https://incompetech.com/music/royalty-free/index.html?isrc=USUAN1500026 — licensed under CC BY 4.0 (https://creativecommons.org/licenses/by/4.0/). Re-encoded to 128 kbps MP3 for this app; interactive audio effects may alter playback.",
+    "duration": 365.71,
+    "url": "./assets/track-3.mp3"
+  }
+]

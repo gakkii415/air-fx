@@ -1,4 +1,55 @@
 <!doctype html>
-<html lang="ja"><meta charset="utf-8"><title>準備中</title><body><main>準備中</main>
-<!-- app-version:start --><small id="app-version">v1</small><!-- app-version:end -->
+<html lang="ja">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#111411">
+  <meta name="description" content="曲を選んで、エフェクトをタップ。しゃりしゃり、エアー、リピートで遊べる、ブラウザのサウンドデッキ。">
+  <title>AIR FX — 音を、あそぼう。</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<svg class="svg-defs" xmlns="http://www.w3.org/2000/svg"><defs>
+<symbol id="i-play" viewBox="0 0 24 24"><path d="m9 5 11 7-11 7Z" fill="currentColor" stroke="none"/></symbol>
+<symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14" stroke-width="4"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+<symbol id="i-volume" viewBox="0 0 24 24"><path d="m11 5-6 5H2v4h3l6 5Zm4 3a6 6 0 0 1 0 8m3-11a10 10 0 0 1 0 14"/></symbol>
+<symbol id="i-reset" viewBox="0 0 24 24"><path d="M3 10a9 9 0 1 1 2 9M3 4v6h6"/></symbol>
+<symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V3m-5 5 5-5 5 5M4 15v5h16v-5"/></symbol>
+<symbol id="i-headphones" viewBox="0 0 24 24"><path d="M4 14v-3a8 8 0 0 1 16 0v3M4 12H2v8h5v-8Zm16 0h2v8h-5v-8Z"/></symbol>
+</defs></svg>
+<div class="app-shell">
+<header class="topbar">
+  <a class="brand" href="./" aria-label="AIR FX ホーム"><span class="brand-icon">a<span>↗</span></span><span>AIR<span class="brand-fx">FX</span><small>PLAY WITH SOUND</small></span></a>
+  <div class="top-right"><span class="system-status"><i></i><span id="system-status">SYSTEM READY</span></span><button class="text-button" id="help-open">使い方 <span class="help-mark">?</span></button></div>
+</header>
+<main>
+<section class="intro"><div><div class="eyebrow"><span class="small-line"></span> YOUR POCKET EFFECT DECK <span class="version">VOL. 01</span></div><h1>音を、<span>あそぼう。</span><span class="heading-spark">✳</span></h1><p>曲を選んで、エフェクトをタップ。<br class="mobile-br">いつものビートを、自分だけの音に。</p></div><div class="intro-stamp"><svg><use href="#i-headphones"/></svg><span>HEADPHONES<br>RECOMMENDED</span></div></section>
+<div class="workspace-grid">
+<aside class="library panel"><div class="section-heading"><h2><span class="section-num">01</span> SELECT A TRACK</h2><span class="count" id="track-count">— TRACKS</span></div><p class="section-description">まずは、この曲であそぶ。</p><div id="track-list" class="track-list"><div class="library-loading">ライブラリを読み込み中…</div></div><button class="upload-button" id="upload-button" aria-label="自分の曲を読み込む"><span class="upload-icon"><svg><use href="#i-plus"/></svg></span><span>自分の曲をつかう<small>MP3 / WAV / M4A / OGG</small></span><svg class="upload-arrow"><use href="#i-arrow"/></svg></button><input id="audio-upload" type="file" accept="audio/*,.mp3,.wav,.m4a,.ogg,.flac" hidden><div class="local-note"><span>↳</span> 読み込んだ曲は端末内で処理されます。</div><button class="license-button" id="credits-open">音源・ライセンスについて <span>↗</span></button></aside>
+<section class="deck panel" aria-label="プレイヤーとエフェクト">
+<div class="deck-topline"><span class="deck-tag"><i></i> LIVE DECK</span><span id="audio-tag">WEB AUDIO / STEREO</span></div>
+<div class="now-playing"><div class="now-art art-1" id="now-art" aria-hidden="true"><span class="art-orbit"></span><span class="art-letter">01</span></div><div class="now-info"><span class="mini-label" id="now-label">READY TO PLAY</span><h2 id="now-title">曲を選んではじめよう</h2><p id="now-artist">ワンタップで、音の世界へ。</p></div><div class="bpm-display"><span id="bpm-number">—</span><small>BPM</small></div></div>
+<div class="waveform-wrap"><canvas id="waveform" aria-hidden="true"></canvas><div class="waveform-empty" id="waveform-empty">SELECT YOUR SOUND</div><input id="seek" type="range" min="0" max="1000" value="0" aria-label="再生位置"><span class="waveform-playhead" id="playhead"></span></div>
+<div class="transport"><div class="transport-left"><button class="play-button" id="play-button" aria-label="再生" disabled><svg><use href="#i-play"/></svg></button><span class="time"><span id="elapsed">0:00</span><span class="time-divider">/</span><span id="duration">0:00</span></span><button class="loop-button active" id="loop-button" aria-label="ループ再生" aria-pressed="true"><svg><use href="#i-reset"/></svg><span>LOOP</span></button></div><div class="volume-control"><svg><use href="#i-volume"/></svg><input type="range" id="volume" min="0" max="100" value="65" aria-label="音量"></div></div>
+<div class="effects-header"><h2><span class="section-num">02</span> FEEL THE EFFECT</h2><div class="mode-switch" role="group" aria-label="エフェクトの操作モード"><button class="selected" data-mode="tap" aria-pressed="true">タップ</button><button data-mode="hold" aria-pressed="false">長押し</button></div></div>
+<div class="effects-grid" id="effects-grid">
+<button class="effect-pad" data-effect="crush" style="--fx:#d4fa73" aria-pressed="false"><span class="pad-top"><span>01 / CRUSH</span><kbd>A</kbd></span><svg class="effect-icon" viewBox="0 0 120 40"><path d="M4 27h12V12h13v20h13V7h13v25h13V14h13v14h13V9h12v18h10"/></svg><span class="pad-name">しゃりしゃり</span><span class="pad-desc">音をくだく、デジタルな粒感</span><span class="pad-led"></span></button>
+<button class="effect-pad" data-effect="air" style="--fx:#9ce4ec" aria-pressed="false"><span class="pad-top"><span>02 / AIR</span><kbd>S</kbd></span><svg class="effect-icon" viewBox="0 0 120 40"><path d="M4 27c18-29 24 15 43-9s27 14 42-5 21 2 27-7M4 36c18-29 24 15 43-9s27 14 42-5 21 2 27-7"/></svg><span class="pad-name">エアー</span><span class="pad-desc">空間をうねる、浮遊する音</span><span class="pad-led"></span></button>
+<button class="effect-pad" data-effect="filter" style="--fx:#c2aaff" aria-pressed="false"><span class="pad-top"><span>03 / FILTER</span><kbd>D</kbd></span><svg class="effect-icon" viewBox="0 0 120 40"><path d="M4 8h43c27 0 23 25 47 25h22"/><path class="fine" d="M4 19h112M4 30h112"/></svg><span class="pad-name">こもる</span><span class="pad-desc">高音をしぼって、深く潜る</span><span class="pad-led"></span></button>
+<button class="effect-pad" data-effect="gate" style="--fx:#f9bb8b" aria-pressed="false"><span class="pad-top"><span>04 / GATE</span><kbd>J</kbd></span><svg class="effect-icon" viewBox="0 0 120 40"><path d="M4 32h8V8h17v24h16V8h17v24h16V8h17v24h21"/></svg><span class="pad-name">ぶつ切り</span><span class="pad-desc">ビートに合わせて、刻む</span><span class="pad-led"></span></button>
+<button class="effect-pad" data-effect="repeat" style="--fx:#f1a9d4" aria-pressed="false"><span class="pad-top"><span>05 / REPEAT</span><kbd>K</kbd></span><svg class="effect-icon" viewBox="0 0 120 40"><path d="m4 31 8-22 8 22 8-22 8 22m10 0 8-22 8 22 8-22 8 22m10 0 8-22 8 22 8-22 8 22"/></svg><span class="pad-name">リピート</span><span class="pad-desc">一瞬の音を、くり返す</span><span class="pad-led"></span></button>
+<button class="effect-pad" data-effect="echo" style="--fx:#b9caff" aria-pressed="false"><span class="pad-top"><span>06 / ECHO</span><kbd>L</kbd></span><svg class="effect-icon" viewBox="0 0 120 40"><path d="m8 31 8-23 8 23m15 0 7-18 7 18m15 0 6-13 6 13m15 0 5-8 5 8"/></svg><span class="pad-name">やまびこ</span><span class="pad-desc">音の余韻を、重ねて広げる</span><span class="pad-led"></span></button>
+</div>
+<div class="effect-bottom"><span class="active-fx" id="active-fx"><i></i> エフェクトを選んでみよう</span><button id="reset-fx" class="text-button"><svg><use href="#i-reset"/></svg> リセット</button></div>
+</section>
+<aside class="controls panel"><div class="section-heading"><h2><span class="section-num">03</span> MAKE IT YOURS</h2><span class="mini-cross">✳</span></div><div class="xy-heading"><span>TOUCH & MOVE</span><span class="live-label">● LIVE</span></div><div class="xy-pad" id="xy-pad" role="slider" tabindex="0" aria-label="エフェクト強度、左右キーで音色、上下キーで強さを調整" aria-valuemin="0" aria-valuemax="100" aria-valuenow="60"><div class="xy-corner tl"></div><div class="xy-corner tr"></div><div class="xy-corner bl"></div><div class="xy-corner br"></div><span class="xy-word">FEEL<br>THE<br><em>SOUND.</em></span><div class="xy-line x-line" id="x-line"></div><div class="xy-line y-line" id="y-line"></div><div class="xy-cursor" id="xy-cursor"><span></span></div><span class="xy-axis axis-y">INTENSITY ↑</span><span class="xy-axis axis-x">COLOR →</span></div><p class="xy-tip">指でなぞって、音色と強さを変える。</p><div class="slider-control intensity-control"><label for="intensity"><span>エフェクトの強さ</span><output id="intensity-output">60<span>%</span></output></label><input type="range" id="intensity" min="0" max="100" value="60"><div class="range-captions"><span>SOFT</span><span>HARD</span></div></div><div class="slider-control mix-control"><label for="mix"><span>原音とのミックス</span><output id="mix-output">75<span>%</span></output></label><input type="range" id="mix" min="0" max="100" value="75"><div class="range-captions"><span>DRY</span><span>WET</span></div></div><div class="bpm-control"><label for="bpm-input">TEMPO SYNC</label><div><input type="number" min="60" max="220" value="128" id="bpm-input" aria-label="エフェクト同期BPM"><span>BPM</span></div></div><div class="control-note"><span>✧</span><p>エフェクトは重ねがけOK。<br>好きな組み合わせを見つけよう。</p></div></aside>
+</div>
+<div class="bottom-note"><span><span class="keycap">A S D</span><span class="keycap">J K L</span> キーボードでもプレイできます</span><span>NO INSTALL. JUST PLAY. <span class="bottom-star">✳</span></span></div>
+</main><footer><span class="footer-logo">AIR FX<span>音を、あそぼう。</span></span><span>MADE FOR YOUR NEXT SOUND.</span><button id="credits-footer">CREDITS & LICENSES ↗</button><!-- app-version:start --><small id="app-version">v2</small><!-- app-version:end --></footer>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<dialog id="help-dialog"><div class="dialog-top"><span class="eyebrow">QUICK START</span><button class="dialog-close" aria-label="閉じる">×</button></div><h2>タップひとつで、<br>いつもの音を変える。</h2><ol class="help-steps"><li><span>01</span><div><strong>曲を選ぶ</strong><p>ライブラリの曲をタップすると再生が始まります。自分の音声ファイルも読み込めます。</p></div></li><li><span>02</span><div><strong>エフェクトで遊ぶ</strong><p>パッドをタップでON / OFF。複数同時に使えます。「長押し」モードは押している間だけON。</p></div></li><li><span>03</span><div><strong>なぞって音を動かす</strong><p>右のタッチパッドで音色と強さを調整。PCでは A S D / J K L キーも使えます。</p></div></li></ol><p class="dialog-note">ブラウザ上で音を加工します。まずは小さめの音量からどうぞ。SOUND VOLTEXの公式サービスではありません。</p><button class="primary-button dialog-close">さっそくあそぶ <span>↗</span></button></dialog>
+<dialog id="credits-dialog"><div class="dialog-top"><span class="eyebrow">SOUND LIBRARY</span><button class="dialog-close" aria-label="閉じる">×</button></div><h2>音源とクレジット</h2><p class="credits-intro">加工・同梱が許可された配布音源を収録しています。各曲の条件と配布元はこちら。</p><div id="credits-content"></div><p class="dialog-note">エフェクトは再生中に適用されます。お手持ちの曲は端末内で処理し、アップロード・保存はしません。</p></dialog>
+<script type="module" src="./app.js"></script>
 </body></html>

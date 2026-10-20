@@ -46,11 +46,8 @@
 
 ## Project Feature Maturity
 
-- Product / users / core outcome:
-- Current maturity:
-- Core feature set / completion criteria:
-- Next target state:
-- Expansion Set:
-- Deferred or rejected items / reasons:
-- Important flows / states / data decisions:
-- Durable feature decisions:
+
+- Product / users / core outcome: iPhoneを中心に、曲へリアルタイムで音声エフェクトを重ねて遊ぶブラウザデッキ。
+- Current maturity: 6エフェクト、同梱3曲、ローカル読込、シーク、ループ、タップ・長押し・キーボード操作が実装済み。
+- Important flows / states / data decisions: 音声は端末内のWeb Audio / AudioWorkletで処理し、読み込み競合は最後の選択を優先する。中断したAudioContextは再生操作で再開する。
+- Deferred or rejected items / reasons: 録音・書き出し、アカウント保存、外部配信サービス連携は現在の中心体験に含めない。

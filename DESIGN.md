@@ -350,14 +350,8 @@ Yesの場合、装飾を追加する前に、構成、情報階層、コンテ�
 
 ## Project Direction
 
-- Product / users / primary task:
-- Context of use / target devices:
-- Desired impression:
-- Information density / hierarchy:
-- Reference products / source URLs:
-- Selected reference dimensions / what to borrow:
-- What not to copy / avoid:
-- Structural direction:
-- Typography / color / spacing / shape direction:
-- Motion / responsive direction:
-- Durable design decisions:
+
+- Product / users / primary task: 曲選択から6つのパッド操作へ進むパフォーマンス用デッキ。
+- Context of use / target devices: iPhone 16の393×852 CSS pxを中心に、Safariツールバーを考慮した393×745と横向きにも対応する。
+- Existing design to retain: 暗いオリーブの背景、ライムの再生・有効状態、エフェクト別の波形記号。縦画面では曲選択と全6パッドを先頭画面へ収め、主要タッチ操作は44px以上にする。
+- Motion / accessibility: 押下状態はaria-pressedと視覚表示を同期し、prefers-reduced-motionに対応する。

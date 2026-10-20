@@ -48,12 +48,7 @@
 
 ## Project Content Maturity
 
-- Content value / audience / use context:
-- Content types / structure / quality bar:
-- Current maturity / coverage / depth:
-- Core content set / completion criteria:
-- Next target state:
-- Expansion Set:
-- Deferred or rejected areas / reasons:
-- Sources / freshness / maintenance:
-- Durable content decisions:
+
+- Content value / audience / use context: Unity、Cipher、EDM Detection Modeをワンタップで再生できる。
+- Sources / freshness / maintenance: tracks.jsonを音源メタデータと帰属表示の正本とする。作者公式配布ページとCC BY条件を保持し、加工・再配布が確認できた音源のみ同梱する。
+- Durable content decisions: 128kbps MP3への再エンコードと再生時エフェクトの変更をクレジットへ明示する。
