@@ -10,9 +10,10 @@
  * seek preserves the current playing/paused state. Effects can be combined.
  * Public state: currentTime, duration, isPlaying, context, analyser, onEnded.
  */
-const EFFECTS = ['crush', 'air', 'filter', 'gate', 'repeat', 'echo'];
-const NATIVE_EFFECTS = ['air', 'filter', 'echo'];
-const ECHO_DIVISIONS = [1, 0.75, 0.5, 0.25, 0.125];
+import { EFFECT_DEFAULTS, getEffectConfig } from './effect-config.js?v=6';
+
+const EFFECTS = Object.keys(EFFECT_DEFAULTS);
+const NATIVE_EFFECTS = ['air', 'filter'];
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
 
 export class AudioEngine {
@@ -27,10 +28,10 @@ export class AudioEngine {
     this._startedAt = 0;
     this._playing = false;
     this._volume = 0.65;
-    this._mix = 0.72;
+    this._mix = 1;
     this._intensity = 1;
     this._bpm = 120;
-    this._effectParameters = Object.fromEntries(EFFECTS.map((id) => [id, 0.5]));
+    this._effectParameters = { ...EFFECT_DEFAULTS };
     this._effects = new Set();
     this._ready = null;
     this._transportVersion = 0;
@@ -175,18 +176,15 @@ export class AudioEngine {
 
     this._filter = ctx.createBiquadFilter();
     this._filter.type = 'lowpass';
-    this._filterLFO = ctx.createOscillator();
-    this._filterLFO.type = 'sine';
-    this._filterDepth = ctx.createGain();
-    this._filterLFO.connect(this._filterDepth).connect(this._filter.detune);
+    this._filterGain = ctx.createGain();
+    this._filter.connect(this._filterGain);
 
-    // AIR: short modulated delay, filtered feedback, and an audible comb blend.
+    // Native AIR fallback: an acyclic, feed-forward short-delay comb.
     this._airDelay = ctx.createDelay(0.08);
     this._airHighpass = ctx.createBiquadFilter();
     this._airHighpass.type = 'highpass';
-    this._airHighpass.frequency.value = 480;
+    this._airHighpass.frequency.value = 20;
     this._airHighpass.Q.value = 0.6;
-    this._airFeedback = ctx.createGain();
     this._airWet = ctx.createGain();
     this._airDirect = ctx.createGain();
     this._airSum = ctx.createGain();
@@ -194,27 +192,13 @@ export class AudioEngine {
     this._airLFO.type = 'sine';
     this._airDepth = ctx.createGain();
     this._airLFO.connect(this._airDepth).connect(this._airDelay.delayTime);
-    this._filter.connect(this._airDirect).connect(this._airSum);
-    this._filter.connect(this._airDelay);
+    this._filterGain.connect(this._airDirect).connect(this._airSum);
+    this._filterGain.connect(this._airDelay);
     this._airDelay.connect(this._airHighpass);
     this._airHighpass.connect(this._airWet).connect(this._airSum);
-    this._airHighpass.connect(this._airFeedback).connect(this._airDelay);
-
-    // ECHO: a tempo-synced eighth note delay with a darkening feedback path.
-    this._echoDelay = ctx.createDelay(2.1);
-    this._echoLowpass = ctx.createBiquadFilter();
-    this._echoLowpass.type = 'lowpass';
-    this._echoLowpass.frequency.value = 5200;
-    this._echoLowpass.Q.value = 0.5;
-    this._echoFeedback = ctx.createGain();
-    this._echoWet = ctx.createGain();
-    this._echoDirect = ctx.createGain();
-    this._echoSum = ctx.createGain();
-    this._airSum.connect(this._echoDirect).connect(this._echoSum);
-    this._airSum.connect(this._echoDelay);
-    this._echoDelay.connect(this._echoLowpass);
-    this._echoLowpass.connect(this._echoWet).connect(this._echoSum);
-    this._echoLowpass.connect(this._echoFeedback).connect(this._echoDelay);
+    // No native feedback cycle: browsers impose a render-quantum delay in a
+    // cycle. The accurate sub-millisecond feedback flanger lives in the worklet;
+    // this acyclic, feed-forward comb is only the native fallback.
 
     this._limiter = ctx.createDynamicsCompressor();
     this._limiter.threshold.value = -5;
@@ -238,10 +222,9 @@ export class AudioEngine {
 
     this._input.connect(this._dry).connect(this._sum);
     this._input.connect(this._processor).connect(this._filter);
-    this._echoSum.connect(this._wet).connect(this._sum);
+    this._airSum.connect(this._wet).connect(this._sum);
     this._sum.connect(this._transport).connect(this._master).connect(this._limiter);
     this._limiter.connect(this._safety).connect(this.analyser).connect(ctx.destination);
-    this._filterLFO.start();
     this._airLFO.start();
     this._graphReady = true;
     this._applySettings(true);
@@ -327,7 +310,7 @@ export class AudioEngine {
     source.connect(envelope).connect(this._input);
     this._source = record;
     this._startedAt = ctx.currentTime;
-    this._processor.port?.postMessage({ type: 'reset' });
+    this._processor.port?.postMessage({ type: 'reset', offsetSeconds: this._offset, contextTime: ctx.currentTime });
     this._applySettings();
     this._ramp(this._transport.gain, 1, 0.012);
     source.onended = () => {
@@ -462,42 +445,42 @@ export class AudioEngine {
 
   _applySettings(immediate = false) {
     if (!this._graphReady) return;
-    const color = this._effectParameters;
+    const config = Object.fromEntries(EFFECTS.map((id) => [id, getEffectConfig(id, this._effectParameters[id], { bpm: this._bpm, sampleRate: this.context.sampleRate })]));
     const active = (id) => this._effects.has(id);
     const ramp = (param, value, time = 0.03) => this._ramp(param, value, time, immediate);
     const hasEffects = this._effects.size > 0;
     // Linear blend remains at unity when the wet path is transparent.
     ramp(this._dry.gain, hasEffects ? 1 - this._mix : 1);
     ramp(this._wet.gain, hasEffects ? this._mix : 0);
-    for (const id of ['crush', 'gate', 'repeat']) {
+    for (const id of ['crush', 'air', 'gate', 'repeat', 'echo']) {
       ramp(this._processor.parameters?.get(id), active(id) ? 1 : 0, 0.012);
     }
     ramp(this._processor.parameters?.get('intensity'), 1);
     ramp(this._processor.parameters?.get('bpm'), this._bpm, 0.025);
-    for (const id of ['crush', 'gate', 'repeat']) {
-      ramp(this._processor.parameters?.get(`${id}Color`), color[id], 0.035);
+    const discrete = (name, value) => {
+      const param = this._processor.parameters?.get(name);
+      if (param && this._ramps.get(param)?.to !== value) this._ramp(param, value, 0, true);
+    };
+    ramp(this._processor.parameters?.get('crushReduction'), config.crush.reductionSamples, 0.02);
+    for (const id of ['gate', 'repeat', 'echo']) {
+      discrete(`${id}Wavelength`, config[id].waveDenominator);
     }
+    ramp(this._processor.parameters?.get('airDelaySeconds'), config.air.delaySeconds, 0.035);
+    ramp(this._processor.parameters?.get('airDepthSeconds'), config.air.depthSeconds, 0.035);
+    ramp(this._processor.parameters?.get('airLfoHz'), config.air.lfoHz);
+    ramp(this._processor.parameters?.get('airFeedback'), config.air.feedback);
 
     const nyquist = this.context.sampleRate * 0.46;
-    const filterCutoff = Math.min(nyquist * 0.55, 180 * Math.pow(55, color.filter));
-    ramp(this._filter.frequency, active('filter') ? filterCutoff : nyquist);
-    ramp(this._filter.Q, active('filter') ? 5.5 : 0.0001);
-    ramp(this._filterDepth.gain, active('filter') ? 180 : 0);
-    ramp(this._filterLFO.frequency, this._bpm / 480);
+    ramp(this._filter.frequency, active('filter') ? config.filter.frequencyHz : nyquist);
+    ramp(this._filter.Q, active('filter') ? config.filter.resonanceDb : 0.0001);
+    ramp(this._filterGain.gain, active('filter') ? config.filter.outputGain : 1);
 
-    ramp(this._airDelay.delayTime, 0.003 + color.air * 0.013, 0.06);
-    ramp(this._airDepth.gain, active('air') ? 0.0015 + color.air * 0.0045 : 0, 0.06);
-    ramp(this._airLFO.frequency, 0.08 + 1.9 * color.air * color.air);
-    ramp(this._airWet.gain, active('air') ? 0.72 : 0);
-    ramp(this._airFeedback.gain, active('air') ? 0.3 + color.air * 0.22 : 0);
-    ramp(this._airDirect.gain, active('air') ? 0.82 : 1);
-
-    const echoDivision = ECHO_DIVISIONS[Math.min(4, Math.floor(color.echo * 5))];
-    ramp(this._echoDelay.delayTime, (60 / this._bpm) * echoDivision, 0.09);
-    ramp(this._echoFeedback.gain, active('echo') ? 0.3 + color.echo * 0.34 : 0);
-    ramp(this._echoWet.gain, active('echo') ? 0.64 : 0);
-    ramp(this._echoDirect.gain, active('echo') ? 0.85 : 1);
-    ramp(this._echoLowpass.frequency, 6500 - color.echo * 4000);
+    const nativeAir = active('air') && !this._workletReady;
+    ramp(this._airDelay.delayTime, config.air.delaySeconds, 0.035);
+    ramp(this._airDepth.gain, nativeAir ? config.air.depthSeconds : 0, 0.035);
+    ramp(this._airLFO.frequency, config.air.lfoHz);
+    ramp(this._airWet.gain, nativeAir ? 0.5 : 0);
+    ramp(this._airDirect.gain, nativeAir ? 0.5 : 1);
   }
 
   getDiagnostics() {
@@ -528,7 +511,6 @@ export class AudioEngine {
   async destroy() {
     this.stop();
     ++this._loadVersion;
-    this._filterLFO?.stop();
     this._airLFO?.stop();
     this._processor?.port?.close();
     if (this.context && this.context.state !== 'closed') await this.context.close();

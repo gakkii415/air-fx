@@ -57,3 +57,13 @@
 
 - Performance controls: 初期モードは長押し。指ごとの操作とパラメータを独立して管理し、指を離したパッドだけを解除する。パラメータは指を離しても保持する。
 - Gesture handling: 演奏面内のピンチ・ジェスチャーだけを抑止し、複数パッドの同時操作を妨げるブラウザ拡大縮小を防ぐ。
+
+## Effect Reference and Scope
+
+- Fidelity target: K-Shoot MANIAの公開エフェクト仕様を処理モデルの参考にする。KONAMI公式で確認したのはFX長押しとアナログ操作であり、本家のDSPや全譜面の再現を主張しない。6パッドと上下操作はこのアプリ独自の操作方法。
+- DSP decisions: BitCrusherはサンプル保持、Flangerは約0.68–1.70msの短い遅延と拍同期、LPFは自動揺れを加えないカットオフ操作。Gateは50%デューティで無音まで切り、Retriggerは押下以降の音を反復して2拍ごとに更新する。Echoは再取り込みなしの反復に毎回60%の減衰を加える。初期ミックスは100%とし、原音の漏れで処理が弱まらないようにする。
+- Startup resilience: 外部フォントは非同期に読み込み、フォント配信の遅延・失敗でアプリの初期化や再生操作を待たせない。
+- Short-delay implementation: フィードバック付きFlangerはAudioWorklet内でサンプル単位に処理する。標準DelayNodeの循環接続では遅延が最低1 render quantumへ制限されるため、約1msの遅延をAudioParamの表示だけで検証しない。簡易モードはフィードバックを省いたFlangerとLPFを提供する。[Web Audio仕様](https://webaudio.github.io/web-audio-api/#dom-delaynode-delaytime)。
+- Musical parameters: Gate・Retrigger・Echoは4/4小節に対する音符の分割を用い、三連符も選べる。サンプル保持時間は44.1kHzの基準から実行時のサンプルレートへ換算する。各パッドには割合だけでなく処理単位を表示する。
+- Source boundaries: LPFの周波数・QはK-Shoot仕様でも実装依存。本家の数値として扱わず、公開実装を参考に独自の範囲と音量を調整する。PhaserはFlangerと異なる処理のため混同しない。追加エフェクト・譜面の読込・自動BPM検出は今回の範囲に含めない。
+- References: [KONAMI・SDVXの遊び方](https://p.eagate.573.jp/game/sdvx/vii/howto/play.html)、[K-Shoot公開エフェクト仕様](https://github.com/kshootmania/ksm-chart-format/blob/b984509ad6b43c208f8a3b4aff51d6a8664b896d/kson_format.md#L454-L586)、[LPFの実装依存パラメータ](https://github.com/kshootmania/ksm-chart-format/blob/b984509ad6b43c208f8a3b4aff51d6a8664b896d/kson_format.md#L639-L654)、[USC公開プリセット](https://github.com/Drewol/unnamed-sdvx-clone/blob/260b050569413a04db9d437c5158d2a032873ad6/Beatmap/src/AudioEffects.cpp#L48-L72)。K-ShootとUSCはSDVX公式仕様ではない。

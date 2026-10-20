@@ -52,3 +52,5 @@
 - Content value / audience / use context: TheFatRat、Kevin MacLeod、Creoによる9曲を収録し、曲選択の一覧から再生できる。
 - Sources / freshness / maintenance: tracks.jsonを音源メタデータと帰属表示の正本とする。作者公式配布ページとCC BY条件を保持し、加工・再配布が確認できた音源のみ同梱する。
 - Durable content decisions: 128kbps MP3への再エンコードと再生時エフェクトの変更をクレジットへ明示する。
+
+- Effect descriptions: 日本語のパッド名と、BitCrusher / Flanger / LPF / Gate / Retrigger / Echoの処理名を対応させる。ヘルプに参照した公開仕様と公式・非公式の区別を示し、本家との完全一致を主張しない。

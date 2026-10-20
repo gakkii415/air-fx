@@ -1,18 +1,19 @@
-import { AudioEngine } from './audio-engine.js?v=5';
+import { AudioEngine } from './audio-engine.js?v=6';
+import { EFFECT_DEFAULTS, formatEffectParameter } from './effect-config.js?v=6';
 
 const $ = id => document.getElementById(id);
 const engine = new AudioEngine();
 const effectNames = { crush: 'しゃりしゃり', air: 'エアー', filter: 'こもる', gate: 'ぶつ切り', repeat: 'リピート', echo: 'やまびこ' };
 const parameters = {
   crush: { name: '音の粗さ', low: '細かい', high: '粗い' },
-  air: { name: 'うねり', low: 'ゆっくり', high: '速い' },
+  air: { name: 'フランジャーの遅延時間' },
   filter: { name: '音の明るさ', low: 'こもる', high: 'ひらく' },
   gate: { name: '刻みの速さ', low: 'ゆったり', high: '細かく' },
   repeat: { name: 'リピート幅', low: '長い', high: '短い' },
   echo: { name: '音の間隔', low: '長い', high: '短い' },
 };
 const keys = { a: 'crush', s: 'air', d: 'filter', j: 'gate', k: 'repeat', l: 'echo' };
-const state = { tracks: [], current: null, loaded: false, loading: false, peaks: null, mode: 'hold', effects: new Set(), loop: true, loadRequest: 0, intensity: 1, selectedEffect: 'air', params: Object.fromEntries(Object.keys(effectNames).map(id => [id, .5])) };
+const state = { tracks: [], current: null, loaded: false, loading: false, peaks: null, mode: 'hold', effects: new Set(), loop: true, loadRequest: 0, intensity: 1, selectedEffect: 'air', params: { ...EFFECT_DEFAULTS } };
 const heldPointers = new Map(), heldKeys = new Map();
 let toastTimer, frameTime = 0, boundAudioContext = null;
 const clamp = n => Math.max(0, Math.min(1, Number(n) || 0));
@@ -22,10 +23,10 @@ function toast(message) { $('toast').textContent = message; $('toast').classList
 function status(text) { $('system-status').textContent = text; }
 function rangeFill(input) { input.style.setProperty('--fill', `${(input.value - input.min) / (input.max - input.min) * 100}%`); }
 function showPlaybackNotice(message, retry = false) { $('playback-notice-text').textContent = message; $('retry-play').hidden = !retry; $('playback-notice').hidden = false; }
-function clearPlaybackNotice() { if (engine.getDiagnostics().fallbackReason) showPlaybackNotice('簡易モード：エアー・こもる・やまびこが使えます。'); else $('playback-notice').hidden = true; }
+function clearPlaybackNotice() { if (engine.getDiagnostics().fallbackReason) showPlaybackNotice('簡易モード：エアーとこもるが使えます。'); else $('playback-notice').hidden = true; }
 function syncAudioCapabilities() {
   const available = new Set(engine.availableEffects);
-  document.querySelectorAll('[data-effect]').forEach(pad => { const supported = available.has(pad.dataset.effect); pad.disabled = !supported; pad.title = supported ? '' : 'このブラウザでは、このエフェクトを使えません。'; if (!supported && state.effects.has(pad.dataset.effect)) setEffect(pad.dataset.effect, false); });
+  document.querySelectorAll('[data-effect]').forEach(pad => { const supported = available.has(pad.dataset.effect); pad.disabled = !supported; pad.title = supported ? formatEffectParameter(pad.dataset.effect, state.params[pad.dataset.effect], Number($('bpm-input').value)).label : 'このブラウザでは、このエフェクトを使えません。'; if (!supported && state.effects.has(pad.dataset.effect)) setEffect(pad.dataset.effect, false); });
   if (!available.has(state.selectedEffect)) selectParameter('air');
   clearPlaybackNotice();
 }
@@ -45,6 +46,7 @@ function showTrack(track) {
   $('bpm-number').textContent = track.bpm; $('bpm-input').value = track.bpm;
   $('duration').textContent = formatTime(track.duration); $('elapsed').textContent = '0:00';
   renderTracks();
+  for (const id of Object.keys(effectNames)) renderParameter(id);
 }
 async function selectTrack(track, input = track.file || track.url) {
   const ready = engine.init(); // Resume within the actual user gesture.
@@ -92,16 +94,22 @@ engine.onEnded = async () => { try { if (state.loop) { engine.seek(0); await eng
 $('seek').addEventListener('input', () => { if (state.loaded) { engine.seek(Number($('seek').value) / 1000 * engine.duration); updateTransport(); drawWaveform(); } });
 $('volume').addEventListener('input', e => { engine.setVolume(e.target.value / 100); rangeFill(e.target); });
 $('mix').addEventListener('input', e => { engine.setMix(e.target.value / 100); $('mix-output').textContent = `${e.target.value}%`; rangeFill(e.target); });
-$('bpm-input').addEventListener('change', e => { const bpm = Math.max(60, Math.min(220, Number(e.target.value) || 128)); e.target.value = bpm; $('bpm-number').textContent = bpm; engine.setBpm(bpm); });
+$('bpm-input').addEventListener('change', e => { const bpm = Math.max(60, Math.min(220, Number(e.target.value) || 128)); e.target.value = bpm; $('bpm-number').textContent = bpm; engine.setBpm(bpm); for (const id of Object.keys(effectNames)) renderParameter(id); });
 
 function selectParameter(id) { state.selectedEffect = id; updateParameterUI(); }
 function updateParameterUI() {
   document.querySelectorAll('[data-effect]').forEach(pad => pad.classList.toggle('parameter-selected', pad.dataset.effect === state.selectedEffect));
 }
-function setParameter(id, value) {
-  state.params[id] = clamp(value); engine.setEffectParameter(id, state.params[id]);
+function renderParameter(id) {
   const pad = document.querySelector(`[data-effect="${id}"]`), number = Math.round(state.params[id] * 100);
-  pad.style.setProperty('--param', `${number}%`); pad.querySelector('.pad-parameter output').textContent = number;
+  const display = formatEffectParameter(id, state.params[id], Number($('bpm-input').value));
+  pad.style.setProperty('--param', `${number}%`); pad.querySelector('.pad-parameter output').textContent = display.value;
+  pad.querySelector('.pad-unit').textContent = display.unit;
+  pad.setAttribute('aria-label', `${effectNames[id]}。${display.label}。長押しでオン、上下に動かして${parameters[id].name}を調整`);
+  if (!pad.disabled) pad.title = display.label;
+}
+function setParameter(id, value) {
+  state.params[id] = clamp(value); engine.setEffectParameter(id, state.params[id]); renderParameter(id);
   if (state.selectedEffect === id) updateParameterUI();
 }
 function setEffect(id, on) {
@@ -114,7 +122,7 @@ function setEffect(id, on) {
   if (on && !state.loaded && !state.loading && state.current) selectTrack(state.current);
 }
 function isHeld(id) { return [...heldPointers.values()].some(p => p.effect === id) || [...heldKeys.values()].includes(id); }
-function clearEffects(resetParameters = false) { heldPointers.clear(); heldKeys.clear(); for (const id of Object.keys(effectNames)) { setEffect(id, false); if (resetParameters) setParameter(id, .5); } }
+function clearEffects(resetParameters = false) { heldPointers.clear(); heldKeys.clear(); for (const id of Object.keys(effectNames)) { setEffect(id, false); if (resetParameters) setParameter(id, EFFECT_DEFAULTS[id]); } }
 function releaseHeld() { if (state.mode === 'hold') clearEffects(); else { heldPointers.clear(); heldKeys.clear(); } }
 $('reset-fx').addEventListener('click', () => { clearEffects(true); toast('エフェクトとパラメータをリセットしました'); });
 document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => { clearEffects(); state.mode = button.dataset.mode; document.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('selected', b === button); b.setAttribute('aria-pressed', String(b === button)); }); setEffect('crush', false); toast(state.mode === 'hold' ? '押している間だけ ON。上下へ動かして音を変えられます。' : 'タップで ON / OFF。押したまま上下に動かすと音が変わります。'); }));
@@ -129,7 +137,6 @@ function releasePointer(pad, e, cancelled = false) {
 }
 for (const pad of document.querySelectorAll('[data-effect]')) {
   const id = pad.dataset.effect;
-  pad.setAttribute('aria-label', `${effectNames[id]}。長押しでオン、上下に動かして${parameters[id].name}を調整`);
   pad.addEventListener('pointerdown', e => {
     if (pad.disabled || (e.pointerType === 'mouse' && e.button !== 0)) return;
     e.preventDefault(); selectParameter(id);
@@ -192,9 +199,9 @@ new ResizeObserver(drawWaveform).observe(canvas);
 function frame(time) { if (time - frameTime > 45 && !document.hidden) { frameTime = time; if (state.loaded) { $('elapsed').textContent = formatTime(engine.currentTime); $('seek').value = engine.duration ? engine.currentTime / engine.duration * 1000 : 0; if (engine.isPlaying) drawWaveform(); } } requestAnimationFrame(frame); }
 requestAnimationFrame(frame);
 for (const input of document.querySelectorAll('input[type=range]')) rangeFill(input);
-engine.setIntensity(1); engine.setMix(.75);
-for (const id of Object.keys(effectNames)) setParameter(id, .5);
+engine.setIntensity(1); engine.setMix(1);
+for (const id of Object.keys(effectNames)) setParameter(id, EFFECT_DEFAULTS[id]);
 updateParameterUI();
-try { const r = await fetch('./tracks.json?v=5'); if (!r.ok) throw new Error('音源一覧を読み込めませんでした。'); state.tracks = await r.json(); state.current = state.tracks[0]; showTrack(state.current); renderCredits(); $('play-button').disabled = false; }
+try { const r = await fetch('./tracks.json?v=6'); if (!r.ok) throw new Error('音源一覧を読み込めませんでした。'); state.tracks = await r.json(); state.current = state.tracks[0]; showTrack(state.current); renderCredits(); $('play-button').disabled = false; }
 catch (error) { $('track-list').textContent = '音源一覧を読み込めませんでした。自分の曲は読み込めます。'; showPlaybackNotice(error.message); }
 window.__airfx = { engine, state, heldPointers };
