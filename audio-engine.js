@@ -11,6 +11,7 @@
  * Public state: currentTime, duration, isPlaying, context, analyser, onEnded.
  */
 const EFFECTS = ['crush', 'air', 'filter', 'gate', 'repeat', 'echo'];
+const NATIVE_EFFECTS = ['air', 'filter', 'echo'];
 const clamp = (value, min, max) => Math.min(max, Math.max(min, Number(value) || 0));
 
 export class AudioEngine {
@@ -18,6 +19,7 @@ export class AudioEngine {
     this.context = null;
     this.analyser = null;
     this.onEnded = null;
+    this.onCapabilitiesChanged = null;
     this._buffer = null;
     this._source = null;
     this._offset = 0;
@@ -33,34 +35,129 @@ export class AudioEngine {
     this._transportVersion = 0;
     this._loadVersion = 0;
     this._workletError = null;
+    this._workletReady = false;
+    this._graphReady = false;
+    this._fallbackReason = null;
+    this._availableEffects = [...EFFECTS];
+    this._audioSessionType = null;
+    this._audioSessionError = null;
+    this._resumeRequest = null;
+    this._resumeError = null;
     this._ramps = new WeakMap();
   }
 
   async init() {
+    // iOS's default ambient session obeys the phone's Silent mode.
+    // Request a media playback session before creating or resuming Web Audio.
+    this._configureAudioSession();
     if (!this.context) {
       const Context = globalThis.AudioContext || globalThis.webkitAudioContext;
       if (!Context) throw new Error('このブラウザは Web Audio に対応していません。');
       this.context = new Context({ latencyHint: 'interactive' });
       // Request the unlock before awaiting module loading, while the gesture is active.
-      this.context.resume().catch(() => {});
+      this._requestResume();
       this._ready = this._createGraph().catch((error) => {
         this._workletError = error.message || String(error);
         throw error;
       });
-    } else if (this.context.state === 'suspended') {
+    } else if (this.context.state !== 'running' && this.context.state !== 'closed') {
       // Do not wait here: decoding a dropped file must also work before audio unlock.
-      this.context.resume().catch(() => {});
+      this._requestResume();
     }
     await this._ready;
     return this;
   }
 
+  _configureAudioSession() {
+    try {
+      const session = globalThis.navigator?.audioSession;
+      if (!session) return;
+      if (session.type !== 'playback') session.type = 'playback';
+      this._audioSessionType = session.type;
+      this._audioSessionError = null;
+    } catch (error) {
+      // The experimental API may be present but unavailable in an embedded browser.
+      this._audioSessionError = error.message || String(error);
+    }
+  }
+
+  _requestResume() {
+    try {
+      // Invoke synchronously, before init() yields and loses the user's gesture.
+      this._resumeRequest = Promise.resolve(this.context.resume());
+    } catch (error) {
+      this._resumeRequest = Promise.reject(error);
+    }
+    this._resumeRequest.catch((error) => { this._resumeError = error.message || String(error); });
+    return this._resumeRequest;
+  }
+
+  async _waitForResume() {
+    if (this.context.state === 'running') { this._resumeError = null; return; }
+    let timer;
+    try {
+      await Promise.race([
+        this._resumeRequest || this._requestResume(),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => reject(new Error('Audio resume timed out')), 2500);
+        }),
+      ]);
+      if (this.context.state !== 'running') throw new Error('Audio context is not running');
+      this._resumeError = null;
+    } catch (error) {
+      this._resumeError = error.message || String(error);
+      throw new Error('音声を開始できませんでした。再生ボタンをもう一度タップしてください。');
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  _useNativeProcessor(error) {
+    const previous = this._processor;
+    this._workletError = error.message || String(error);
+    this._fallbackReason = this._workletError;
+    this._workletReady = false;
+    this._availableEffects = [...NATIVE_EFFECTS];
+    this._effects = new Set([...this._effects].filter((id) => NATIVE_EFFECTS.includes(id)));
+    this._processor = this.context.createGain();
+    if (previous && this._input && this._filter) {
+      this._input.disconnect(previous);
+      previous.disconnect();
+      previous.port?.close();
+      this._input.connect(this._processor).connect(this._filter);
+      this._applySettings();
+    }
+    if (typeof this.onCapabilitiesChanged === 'function') this.onCapabilitiesChanged(this.availableEffects);
+  }
+
   async _createGraph() {
     const ctx = this.context;
-    if (!ctx.audioWorklet) {
-      throw new Error('音声エフェクトには HTTPS と AudioWorklet 対応ブラウザが必要です。');
+    let workletTimer;
+    try {
+      if (!ctx.audioWorklet || !globalThis.AudioWorkletNode) throw new Error('AudioWorklet unavailable');
+      const workletURL = new URL('./fx-processor.js', import.meta.url);
+      workletURL.search = new URL(import.meta.url).search;
+      await Promise.race([
+        ctx.audioWorklet.addModule(workletURL),
+        new Promise((_, reject) => {
+          workletTimer = setTimeout(() => reject(new Error('AudioWorklet load timed out')), 3000);
+        }),
+      ]);
+      this._processor = new AudioWorkletNode(ctx, 'air-fx-processor', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+        channelCount: 2,
+        channelCountMode: 'explicit',
+        processorOptions: { maxHistorySeconds: 2 },
+      });
+      this._workletReady = true;
+    } catch (error) {
+      // Worklet restrictions must not block the player or native effects.
+      this._useNativeProcessor(error);
+    } finally {
+      clearTimeout(workletTimer);
     }
-    await ctx.audioWorklet.addModule(new URL('./fx-processor.js', import.meta.url));
 
     this._input = ctx.createGain();
     this._dry = ctx.createGain();
@@ -71,17 +168,8 @@ export class AudioEngine {
     this._transport.gain.value = 0;
     this._master.gain.value = this._volume;
 
-    this._processor = new AudioWorkletNode(ctx, 'air-fx-processor', {
-      numberOfInputs: 1,
-      numberOfOutputs: 1,
-      outputChannelCount: [2],
-      channelCount: 2,
-      channelCountMode: 'explicit',
-      processorOptions: { maxHistorySeconds: 2 },
-    });
-    this._processor.onprocessorerror = () => {
-      this._workletError = 'AudioWorklet processor error';
-      this.pause();
+    if (this._workletReady) this._processor.onprocessorerror = () => {
+      this._useNativeProcessor(new Error('AudioWorklet processor error'));
     };
 
     this._filter = ctx.createBiquadFilter();
@@ -154,6 +242,7 @@ export class AudioEngine {
     this._limiter.connect(this._safety).connect(this.analyser).connect(ctx.destination);
     this._filterLFO.start();
     this._airLFO.start();
+    this._graphReady = true;
     this._applySettings(true);
   }
 
@@ -163,9 +252,18 @@ export class AudioEngine {
     await this.init();
     let bytes;
     if (typeof input === 'string' || input instanceof URL) {
-      const response = await fetch(input);
-      if (!response.ok) throw new Error(`音源を読み込めませんでした (${response.status})`);
-      bytes = await response.arrayBuffer();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 45000);
+      try {
+        const response = await fetch(input, { signal: controller.signal });
+        if (!response.ok) throw new Error(`音源を読み込めませんでした (${response.status})`);
+        bytes = await response.arrayBuffer();
+      } catch (error) {
+        if (controller.signal.aborted) throw new Error('音源の読み込みがタイムアウトしました。接続を確認して、もう一度お試しください。');
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
     } else if (input instanceof ArrayBuffer) {
       bytes = input.slice(0);
     } else if (ArrayBuffer.isView(input)) {
@@ -209,7 +307,7 @@ export class AudioEngine {
   async play() {
     const version = ++this._transportVersion;
     await this.init();
-    if (this.context.state !== 'running') await this.context.resume();
+    await this._waitForResume();
     if (version !== this._transportVersion || this._playing) return;
     if (!this._buffer) throw new Error('先に音源を読み込んでください。');
     if (this._offset >= this.duration - 0.002) this._offset = 0;
@@ -228,7 +326,7 @@ export class AudioEngine {
     source.connect(envelope).connect(this._input);
     this._source = record;
     this._startedAt = ctx.currentTime;
-    this._processor.port.postMessage({ type: 'reset' });
+    this._processor.port?.postMessage({ type: 'reset' });
     this._applySettings();
     this._ramp(this._transport.gain, 1, 0.012);
     source.onended = () => {
@@ -271,7 +369,7 @@ export class AudioEngine {
     this._offset = 0;
     this._releaseSource();
     if (this._transport) this._ramp(this._transport.gain, 0, 0.018);
-    this._processor?.port.postMessage({ type: 'reset' });
+    this._processor?.port?.postMessage({ type: 'reset' });
   }
 
   seek(seconds) {
@@ -284,7 +382,7 @@ export class AudioEngine {
     } else {
       this._playing = false;
       if (this._transport) this._ramp(this._transport.gain, 0, 0.015);
-      this._processor?.port.postMessage({ type: 'reset' });
+      this._processor?.port?.postMessage({ type: 'reset' });
     }
     return this._offset;
   }
@@ -295,6 +393,7 @@ export class AudioEngine {
   }
   get duration() { return this._buffer?.duration || 0; }
   get isPlaying() { return this._playing; }
+  get availableEffects() { return [...this._availableEffects]; }
 
   setVolume(value) {
     this._volume = clamp(value, 0, 1);
@@ -314,9 +413,11 @@ export class AudioEngine {
   }
   setEffect(id, active) {
     if (!EFFECTS.includes(id)) throw new RangeError(`Unknown audio effect: ${id}`);
+    if (!this._availableEffects.includes(id)) return false;
     if (active) this._effects.add(id);
     else this._effects.delete(id);
     this._applySettings();
+    return true;
   }
   setXY(x, y) {
     this._xy = { x: clamp(x, 0, 1), y: clamp(y, 0, 1) };
@@ -347,7 +448,7 @@ export class AudioEngine {
   }
 
   _applySettings(immediate = false) {
-    if (!this._processor) return;
+    if (!this._graphReady) return;
     const s = this._intensity;
     const active = (id) => this._effects.has(id);
     const ramp = (param, value, time = 0.03) => this._ramp(param, value, time, immediate);
@@ -356,10 +457,10 @@ export class AudioEngine {
     ramp(this._dry.gain, hasEffects ? 1 - this._mix : 1);
     ramp(this._wet.gain, hasEffects ? this._mix : 0);
     for (const id of ['crush', 'gate', 'repeat']) {
-      ramp(this._processor.parameters.get(id), active(id) ? 1 : 0, 0.012);
+      ramp(this._processor.parameters?.get(id), active(id) ? 1 : 0, 0.012);
     }
-    ramp(this._processor.parameters.get('intensity'), s);
-    ramp(this._processor.parameters.get('bpm'), this._bpm, 0.025);
+    ramp(this._processor.parameters?.get('intensity'), s);
+    ramp(this._processor.parameters?.get('bpm'), this._bpm, 0.025);
 
     const nyquist = this.context.sampleRate * 0.46;
     const brightness = Math.pow(80, this._xy.x);
@@ -395,8 +496,13 @@ export class AudioEngine {
       mix: this._mix,
       intensity: this._intensity,
       bpm: this._bpm,
-      workletReady: Boolean(this._processor),
+      workletReady: this._workletReady,
       workletError: this._workletError,
+      availableEffects: this.availableEffects,
+      fallbackReason: this._fallbackReason,
+      audioSessionType: this._audioSessionType,
+      audioSessionError: this._audioSessionError,
+      resumeError: this._resumeError,
       limiterReduction: this._limiter?.reduction || 0,
     };
   }
@@ -407,7 +513,7 @@ export class AudioEngine {
     ++this._loadVersion;
     this._filterLFO?.stop();
     this._airLFO?.stop();
-    this._processor?.port.close();
+    this._processor?.port?.close();
     if (this.context && this.context.state !== 'closed') await this.context.close();
   }
 }

@@ -1,4 +1,4 @@
-import { AudioEngine } from './audio-engine.js';
+import { AudioEngine } from './audio-engine.js?v=3';
 
 const $ = (id) => document.getElementById(id);
 const engine = new AudioEngine();
@@ -10,6 +10,14 @@ const escapeHTML = (value) => String(value).replace(/[&<>"']/g, c => ({ '&':'&am
 const formatTime = (seconds) => { const n = Math.max(0, Math.floor(Number(seconds) || 0)); return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`; };
 function toast(message) { $('toast').textContent = message; $('toast').classList.add('visible'); clearTimeout(toastTimer); toastTimer = setTimeout(() => $('toast').classList.remove('visible'), 3700); }
 function status(text) { $('system-status').textContent = text; }
+function showPlaybackNotice(message, retry = false) { $('playback-notice-text').textContent = message; $('retry-play').hidden = !retry; $('playback-notice').hidden = false; }
+function clearPlaybackNotice() { if (engine.getDiagnostics().fallbackReason) showPlaybackNotice('簡易モード：エアー・こもる・やまびこが使えます。'); else $('playback-notice').hidden = true; }
+function syncAudioCapabilities() {
+  const available = new Set(engine.availableEffects || Object.keys(effectNames));
+  document.querySelectorAll('[data-effect]').forEach(pad => { const supported = available.has(pad.dataset.effect); pad.disabled = !supported; pad.title = supported ? '' : 'このブラウザでは、このエフェクトを使えません。'; if (!supported && state.effects.has(pad.dataset.effect)) setEffect(pad.dataset.effect, false); });
+  clearPlaybackNotice();
+}
+engine.onCapabilitiesChanged = syncAudioCapabilities;
 function rangeFill(input) { input.style.setProperty('--fill', `${(input.value - input.min) / (input.max - input.min) * 100}%`); }
 document.querySelectorAll('input[type=range]').forEach(rangeFill);
 
@@ -50,11 +58,13 @@ async function selectTrack(track, input = track.url) {
   $('waveform-empty').hidden = false;
   $('waveform-empty').style.display = 'flex';
   status('LOADING AUDIO');
+  clearPlaybackNotice();
   updateTransport();
   drawWaveform();
   try {
     await ready;
     if (!audioStateBound) { engine.context.addEventListener('statechange', updateTransport); audioStateBound = true; }
+    syncAudioCapabilities();
     const result = await engine.load(input);
     if (request !== state.loadRequest || result.stale) return;
     state.peaks = result.peaks;
@@ -68,17 +78,19 @@ async function selectTrack(track, input = track.url) {
     $('duration').textContent = formatTime(result.duration);
     $('waveform-empty').style.display = 'none';
     $('play-button').disabled = false;
+    updateTransport();
     await engine.play();
     if (request !== state.loadRequest) return;
+    clearPlaybackNotice();
     updateTransport();
   } catch (error) {
     if (request !== state.loadRequest) return;
     state.loading = false;
-    state.loaded = false;
     $('play-button').disabled = false;
-    $('waveform-empty').textContent = 'TAP PLAY TO RETRY';
+    if (!state.loaded) $('waveform-empty').textContent = '再生ボタンでもう一度試せます';
+    updateTransport();
     status('AUDIO LOAD ERROR');
-    toast(error.message || '音源を読み込めませんでした。もう一度お試しください。');
+    showPlaybackNotice(error.message || '再生を開始できませんでした。もう一度お試しください。', true);
   }
 }
 
@@ -94,12 +106,13 @@ function updateTransport() {
 async function togglePlay() {
   if (state.loading || !state.current) return;
   if (!state.loaded) return selectTrack(state.current, state.current.file || state.current.url);
-  try { if (engine.isPlaying && engine.context?.state !== 'running') await engine.context.resume(); else if (engine.isPlaying) engine.pause(); else await engine.play(); updateTransport(); }
-  catch (error) { toast(error.message); }
+  try { if (engine.isPlaying && engine.context?.state === 'running') engine.pause(); else await engine.play(); clearPlaybackNotice(); updateTransport(); }
+  catch (error) { updateTransport(); showPlaybackNotice(error.message || '再生ボタンをもう一度タップしてください。', true); }
 }
 $('play-button').addEventListener('click', togglePlay);
+$('retry-play').addEventListener('click', togglePlay);
 $('loop-button').addEventListener('click', () => { state.loop = !state.loop; $('loop-button').classList.toggle('active', state.loop); $('loop-button').setAttribute('aria-pressed', String(state.loop)); toast(state.loop ? '曲のループ再生 ON' : '曲のループ再生 OFF'); });
-engine.onEnded = async () => { if (state.loop) { engine.seek(0); await engine.play(); } updateTransport(); };
+engine.onEnded = async () => { try { if (state.loop) { engine.seek(0); await engine.play(); } updateTransport(); } catch (error) { updateTransport(); showPlaybackNotice(error.message || '再生ボタンをもう一度タップしてください。', true); } };
 $('seek').addEventListener('input', () => { if (state.loaded) { engine.seek(Number($('seek').value) / 1000 * engine.duration); updateTransport(); drawWaveform(); } });
 $('volume').addEventListener('input', e => { engine.setVolume(e.target.value / 100); rangeFill(e.target); });
 $('mix').addEventListener('input', e => { engine.setMix(e.target.value / 100); $('mix-output').innerHTML = `${e.target.value}<span>%</span>`; rangeFill(e.target); });
@@ -116,6 +129,7 @@ for (const event of ['pointerup', 'pointercancel', 'lostpointercapture']) $('xy-
 $('xy-pad').addEventListener('keydown', e => { if (!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)) return; e.preventDefault(); if (e.key === 'ArrowLeft') state.x = Math.max(0, state.x - .05); if (e.key === 'ArrowRight') state.x = Math.min(1, state.x + .05); setIntensity(state.intensity + (e.key === 'ArrowUp' ? .05 : e.key === 'ArrowDown' ? -.05 : 0)); });
 
 function setEffect(id, on) {
+  if (on && engine.availableEffects && !engine.availableEffects.includes(id)) return;
   if (on) state.effects.add(id); else state.effects.delete(id);
   engine.setEffect(id, on);
   const pad = document.querySelector(`[data-effect="${id}"]`);

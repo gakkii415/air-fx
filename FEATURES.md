@@ -51,3 +51,6 @@
 - Current maturity: 6エフェクト、同梱3曲、ローカル読込、シーク、ループ、タップ・長押し・キーボード操作が実装済み。
 - Important flows / states / data decisions: 音声は端末内のWeb Audio / AudioWorkletで処理し、読み込み競合は最後の選択を優先する。中断したAudioContextは再生操作で再開する。
 - Deferred or rejected items / reasons: 録音・書き出し、アカウント保存、外部配信サービス連携は現在の中心体験に含めない。
+
+- iPhone audio routing: 対応ブラウザではAudioSessionを音楽再生用に設定する。音声の初期化に失敗しても再試行を案内し、音源の読み込み完了後なら再取得せず再生を再試行する。
+- Playback fallback: 専用音声処理が使えない場合も基本再生と利用可能なエフェクトを提供し、非対応パッドを無効化して簡易モードを表示する。
