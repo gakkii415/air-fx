@@ -1,4 +1,4 @@
-import { AudioEngine } from './audio-engine.js?v=4';
+import { AudioEngine } from './audio-engine.js?v=5';
 
 const $ = id => document.getElementById(id);
 const engine = new AudioEngine();
@@ -96,13 +96,7 @@ $('bpm-input').addEventListener('change', e => { const bpm = Math.max(60, Math.m
 
 function selectParameter(id) { state.selectedEffect = id; updateParameterUI(); }
 function updateParameterUI() {
-  const id = state.selectedEffect, meta = parameters[id], value = Math.round(state.params[id] * 100), pad = document.querySelector(`[data-effect="${id}"]`);
-  $('parameter-label').innerHTML = `${effectNames[id]} <span>/ ${meta.name}</span>`;
-  $('parameter-output').textContent = value; $('parameter').value = value;
-  $('parameter').setAttribute('aria-label', `${effectNames[id]}の${meta.name}`);
-  $('parameter-low').textContent = meta.low; $('parameter-high').textContent = meta.high;
-  document.querySelector('.parameter-strip').style.setProperty('--fx', pad.style.getPropertyValue('--fx'));
-  document.querySelectorAll('[data-effect]').forEach(p => p.classList.toggle('parameter-selected', p === pad)); rangeFill($('parameter'));
+  document.querySelectorAll('[data-effect]').forEach(pad => pad.classList.toggle('parameter-selected', pad.dataset.effect === state.selectedEffect));
 }
 function setParameter(id, value) {
   state.params[id] = clamp(value); engine.setEffectParameter(id, state.params[id]);
@@ -110,7 +104,6 @@ function setParameter(id, value) {
   pad.style.setProperty('--param', `${number}%`); pad.querySelector('.pad-parameter output').textContent = number;
   if (state.selectedEffect === id) updateParameterUI();
 }
-$('parameter').addEventListener('input', e => setParameter(state.selectedEffect, e.target.value / 100));
 function setEffect(id, on) {
   if (on && !engine.availableEffects.includes(id)) return;
   if (on) state.effects.add(id); else state.effects.delete(id);
@@ -123,8 +116,8 @@ function setEffect(id, on) {
 function isHeld(id) { return [...heldPointers.values()].some(p => p.effect === id) || [...heldKeys.values()].includes(id); }
 function clearEffects(resetParameters = false) { heldPointers.clear(); heldKeys.clear(); for (const id of Object.keys(effectNames)) { setEffect(id, false); if (resetParameters) setParameter(id, .5); } }
 function releaseHeld() { if (state.mode === 'hold') clearEffects(); else { heldPointers.clear(); heldKeys.clear(); } }
-$('reset-fx').addEventListener('click', () => { clearEffects(true); toast('エフェクトと横パラメータをリセットしました'); });
-document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => { clearEffects(); state.mode = button.dataset.mode; document.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('selected', b === button); b.setAttribute('aria-pressed', String(b === button)); }); setEffect('crush', false); toast(state.mode === 'hold' ? '押している間だけ ON。左右へ動かして音を変えられます。' : 'タップで ON / OFF。押したまま左右に動かすと音が変わります。'); }));
+$('reset-fx').addEventListener('click', () => { clearEffects(true); toast('エフェクトとパラメータをリセットしました'); });
+document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => { clearEffects(); state.mode = button.dataset.mode; document.querySelectorAll('[data-mode]').forEach(b => { b.classList.toggle('selected', b === button); b.setAttribute('aria-pressed', String(b === button)); }); setEffect('crush', false); toast(state.mode === 'hold' ? '押している間だけ ON。上下へ動かして音を変えられます。' : 'タップで ON / OFF。押したまま上下に動かすと音が変わります。'); }));
 
 function releasePointer(pad, e, cancelled = false) {
   const info = heldPointers.get(e.pointerId); if (!info) return;
@@ -136,27 +129,27 @@ function releasePointer(pad, e, cancelled = false) {
 }
 for (const pad of document.querySelectorAll('[data-effect]')) {
   const id = pad.dataset.effect;
-  pad.setAttribute('aria-label', `${effectNames[id]}。長押しでオン、左右に動かして${parameters[id].name}を調整`);
+  pad.setAttribute('aria-label', `${effectNames[id]}。長押しでオン、上下に動かして${parameters[id].name}を調整`);
   pad.addEventListener('pointerdown', e => {
     if (pad.disabled || (e.pointerType === 'mouse' && e.button !== 0)) return;
     e.preventDefault(); selectParameter(id);
-    heldPointers.set(e.pointerId, { effect: id, startX: e.clientX, startValue: state.params[id], width: Math.max(70, pad.getBoundingClientRect().width), mode: state.mode, dragged: false, wasActive: state.effects.has(id) });
+    heldPointers.set(e.pointerId, { effect: id, startY: e.clientY, startValue: state.params[id], travel: Math.max(100, Math.min(240, pad.getBoundingClientRect().height * .65)), mode: state.mode, dragged: false, wasActive: state.effects.has(id) });
     try { pad.setPointerCapture(e.pointerId); } catch { /* synthetic or cancelled pointer */ }
     if (state.mode === 'hold') setEffect(id, true);
   });
   pad.addEventListener('pointermove', e => {
     const info = heldPointers.get(e.pointerId); if (!info || info.effect !== id) return;
     if (e.cancelable) e.preventDefault();
-    const dx = e.clientX - info.startX;
-    if (Math.abs(dx) > 3) info.dragged = true;
-    if (info.dragged) { if (info.mode === 'tap' && !state.effects.has(id)) setEffect(id, true); selectParameter(id); setParameter(id, info.startValue + dx / info.width); }
+    const dy = info.startY - e.clientY;
+    if (Math.abs(dy) > 3) info.dragged = true;
+    if (info.dragged) { if (info.mode === 'tap' && !state.effects.has(id)) setEffect(id, true); selectParameter(id); setParameter(id, info.startValue + dy / info.travel); }
   });
   pad.addEventListener('pointerup', e => { if (e.cancelable) e.preventDefault(); releasePointer(pad, e); });
   for (const event of ['pointercancel', 'lostpointercapture']) pad.addEventListener(event, e => releasePointer(pad, e, true));
   pad.addEventListener('click', e => { if (e.detail === 0 && !e.pointerType && !pad.disabled) { selectParameter(id); setEffect(id, !state.effects.has(id)); } });
   pad.addEventListener('contextmenu', e => e.preventDefault());
   pad.addEventListener('keydown', e => {
-    if (e.code === 'ArrowLeft' || e.code === 'ArrowRight') { e.preventDefault(); selectParameter(id); setParameter(id, state.params[id] + (e.code === 'ArrowLeft' ? -.05 : .05)); return; }
+    if (e.code === 'ArrowUp' || e.code === 'ArrowDown') { e.preventDefault(); selectParameter(id); setParameter(id, state.params[id] + (e.code === 'ArrowUp' ? .05 : -.05)); return; }
     if (!['Space', 'Enter'].includes(e.code)) return;
     e.preventDefault(); if (e.repeat) return; selectParameter(id);
     if (state.mode === 'hold') { heldKeys.set(`pad:${e.code}:${id}`, id); setEffect(id, true); } else setEffect(id, !state.effects.has(id));
@@ -202,6 +195,6 @@ for (const input of document.querySelectorAll('input[type=range]')) rangeFill(in
 engine.setIntensity(1); engine.setMix(.75);
 for (const id of Object.keys(effectNames)) setParameter(id, .5);
 updateParameterUI();
-try { const r = await fetch('./tracks.json?v=4'); if (!r.ok) throw new Error('音源一覧を読み込めませんでした。'); state.tracks = await r.json(); state.current = state.tracks[0]; showTrack(state.current); renderCredits(); $('play-button').disabled = false; }
+try { const r = await fetch('./tracks.json?v=5'); if (!r.ok) throw new Error('音源一覧を読み込めませんでした。'); state.tracks = await r.json(); state.current = state.tracks[0]; showTrack(state.current); renderCredits(); $('play-button').disabled = false; }
 catch (error) { $('track-list').textContent = '音源一覧を読み込めませんでした。自分の曲は読み込めます。'; showPlaybackNotice(error.message); }
 window.__airfx = { engine, state, heldPointers };
